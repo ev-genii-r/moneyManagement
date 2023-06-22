@@ -11,9 +11,11 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.Spinner
 import android.widget.ToggleButton
+import androidx.appcompat.app.AlertDialog
 import com.example.moneymanagement.beans.Transaction
 import com.example.moneymanagement.beans.TransactionDay
 import com.example.moneymanagement.enums.CategoryExpence
+import com.example.moneymanagement.exceptions.LongNameException
 import com.example.moneymanagement.storage.FileWorker
 import com.example.moneymanagement.storage.JSONConvertor
 
@@ -55,37 +57,76 @@ class CreateTransactionActivity : AppCompatActivity() {
 
             var olderTransactions = String()
 
-            var today = Time(Time.getCurrentTimezone())
-            today.setToNow()
-            val fileName = "${today.month}_${today.year}"
+            var args = intent.extras
+            val date = args?.get("date").toString().split(" ")
+            val aDay = date[0].toInt()
+            val aMonth =date[1].toInt()
+            val aYear =date[2].toInt()
+
+            val fileName = "${aMonth}_${aYear}"
             val fileWorker = FileWorker()
+
+//            var today = Time(Time.getCurrentTimezone())
+//            today.setToNow()
+//            val fileName = "${today.month}_${today.year}"
+//            val fileWorker = FileWorker()
 
             try {
                 olderTransactions = fileWorker.readFile(applicationContext, fileName)
-            }catch (e: Exception){ }
+            } catch (e: Exception) {
+            }
 
             val jsonConvertor = JSONConvertor()
             var month = jsonConvertor.convertJsonToMonth(olderTransactions)
 
-            if(month.days.last().day == today.monthDay){
-                month.days.last().transactions.add(Transaction(transactionType,
-                    category,
-                    transactionName.text.toString(),
-                    transactionSum.text.toString().toDouble()))
-            }else{
-                month.days.add(TransactionDay(today.monthDay, 0.0,0.0, mutableListOf(Transaction(transactionType,
-                    category,
-                    transactionName.text.toString(),
-                    transactionSum.text.toString().toDouble()))))
+            try {
+                if (transactionName.text.toString().length > 25) {
+                    throw LongNameException()
+                }
+                if (month.days.last().day == aDay) {
+                    month.days.last().transactions.add(
+                        Transaction(
+                            transactionType,
+                            category,
+                            transactionName.text.toString(),
+                            transactionSum.text.toString().toDouble()
+                        )
+                    )
+                } else {
+                    month.days.add(
+                        TransactionDay(
+                            aDay, 0.0, 0.0, mutableListOf(
+                                Transaction(
+                                    transactionType,
+                                    category,
+                                    transactionName.text.toString(),
+                                    transactionSum.text.toString().toDouble()
+                                )
+                            )
+                        )
+                    )
+                }
+                month.days.last().incomeSum =
+                    month.days.last().transactions.filter { it.type }.sumOf { it.value }
+                month.days.last().expenceSum =
+                    month.days.last().transactions.filter { !it.type }.sumOf { it.value }
+
+                fileWorker.writeFile(applicationContext, jsonConvertor.convertMonthToJson(month))
+                val intent = Intent(this, TransactionTrackerActivity::class.java)
+                startActivity(intent)
+            }catch (ex: LongNameException){
+                val builder = AlertDialog.Builder(this)
+                builder.setTitle("Ошибка")
+                builder.setMessage("Длина названия должна быть менее 26-ти символов")
+                builder.create().show()
+            }catch (e: Exception){
+                val builder = AlertDialog.Builder(this)
+                builder.setTitle("Ошибка")
+                builder.setMessage("Проверьте правильность заполнения полей")
+                builder.create().show()
             }
-
-            month.days.last().incomeSum = month.days.last().transactions.filter { it.type }.sumOf { it.value }
-            month.days.last().expenceSum = month.days.last().transactions.filter { !it.type }.sumOf { it.value }
-
-            fileWorker.writeFile(applicationContext, jsonConvertor.convertMonthToJson(month))
-            val intent = Intent(this, TransactionTrackerActivity::class.java)
-            startActivity(intent)
         }
+
 
     }
 }
